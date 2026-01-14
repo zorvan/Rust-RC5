@@ -32,7 +32,7 @@ impl<T> RC5<T>  where T: PrimInt + NumCast {
         if (x % T::from(2).unwrap())==T::one() {x} else {x + T::one()} 
     }
 
-    pub fn new (wordsize:T, rounds:T, keybytes: T) -> RC5<T>  // Initialize the RC5 Control Block
+    pub fn new (wordsize:T, rounds:T, keybytes: T) -> Self  // Initialize the RC5 Control Block
     where T: PrimInt  {
         RC5 {
                 w: wordsize,
@@ -41,8 +41,8 @@ impl<T> RC5<T>  where T: PrimInt + NumCast {
                 t: T::from(2).unwrap()*(rounds + T::one()),
                 subkeys: vec![T::zero(); (2 * (ToPrimitive::to_u8(&rounds).unwrap() + 1)) as usize],
                 mask:  T::max_value() >> (size_of::<T>()*8 - ToPrimitive::to_usize(&wordsize).unwrap()),
-                p: RC5::odd(NumCast::from(0xB7E151628AED2A6B_u64 >> (64 - ToPrimitive::to_usize(&wordsize).unwrap())).unwrap()),
-                q: RC5::odd(NumCast::from(0x9E3779B97F4A7C15_u64 >> (64 - ToPrimitive::to_usize(&wordsize).unwrap())).unwrap()),
+                p: Self::odd(NumCast::from(0xB7E151628AED2A6B_u64 >> (64 - ToPrimitive::to_usize(&wordsize).unwrap())).unwrap()),
+                q: Self::odd(NumCast::from(0x9E3779B97F4A7C15_u64 >> (64 - ToPrimitive::to_usize(&wordsize).unwrap())).unwrap()),
             }
         }
     }
@@ -62,7 +62,7 @@ impl<T: PrimInt> BitwiseOperator<T> for RC5<T> where T: PrimInt {
         let v = w & self.mask;  
 
         if modn > T::zero()  {
-            //((w << modn) & RC5::mask) | ((w >> (lowbits+1 - modn)) & RC5::mask)
+            //((w << modn) & Self::mask) | ((w >> (lowbits+1 - modn)) & Self::mask)
             ((v.unsigned_shl(ToPrimitive::to_u32(&modn).unwrap())) & self.mask) | 
             ((v.unsigned_shr(ToPrimitive::to_u32(&(self.w - modn)).unwrap())) & self.mask)
         }
@@ -79,7 +79,7 @@ impl<T: PrimInt> BitwiseOperator<T> for RC5<T> where T: PrimInt {
         let v = w & self.mask;
 
         if modn > T::zero()  {
-            //((w >> modn) & RC5::mask) | ((w << (lowbits+1 - modn)) & RC5::mask)
+            //((w >> modn) & Self::mask) | ((w << (lowbits+1 - modn)) & Self::mask)
             ((v.unsigned_shr(ToPrimitive::to_u32(&modn).unwrap())) & self.mask) | 
             ((v.unsigned_shl(ToPrimitive::to_u32(&(self.w - modn)).unwrap())) & self.mask)
         }
@@ -125,7 +125,7 @@ impl<T> BlockCipher<T> for RC5<T> where T: PrimInt {
     
     // ---------------- Setup ----------------
 
-    fn setup(&mut self, key: &Vec<u8>)  {
+    fn setup(&mut self, key: &[u8])  {
         let mut a : T = T::zero();
         let mut b : T = T::zero();
         
@@ -140,24 +140,25 @@ impl<T> BlockCipher<T> for RC5<T> where T: PrimInt {
         
         // Alignment
         let mut l : Vec<T> = vec![T::zero();c as usize];
-        for i in (0..ToPrimitive::to_usize(&(self.b)).unwrap()).rev() {
-            l[i/u] = RC5::modadd(RC5::rol(&*self,l[i/u], T::from(8).unwrap())  ,T::from(key[i]).unwrap());
+        let B = ToPrimitive::to_usize(&(self.b)).unwrap();
+        for i in 0..B {
+            l[(B-1-i)/u] = Self::modadd(Self::rol(&*self,l[(B-1-i)/u], T::from(8).unwrap())  ,T::from(key[B-1-i]).unwrap());
         }
 
         // Initialize Subkeys
         self.subkeys[0] = self.p;
         for i in 1..(st as usize) {
-            self.subkeys[i as usize] = RC5::modadd(self.subkeys[(i-1) as usize], self.q)  & self.mask;
+            self.subkeys[i as usize] = Self::modadd(self.subkeys[(i-1) as usize], self.q)  & self.mask;
         }
 
         // Mixing
         let mut i : u8 = 0;
         let mut j : u8 = 0;
         for _ in 0..3*max(st as usize,c as usize) {
-            a = RC5::rol(&*self, RC5::modadd(self.subkeys[i as usize], RC5::modadd(a,b)), T::from(3).unwrap());
+            a = Self::rol(&*self, Self::modadd(self.subkeys[i as usize], Self::modadd(a,b)), T::from(3).unwrap());
             self.subkeys[i as usize] = a;
             
-            b = RC5::rol(&*self, RC5::modadd(l[j as usize], RC5::modadd(a,b)), RC5::modadd( a,b));
+            b = Self::rol(&*self, Self::modadd(l[j as usize], Self::modadd(a,b)), Self::modadd( a,b));
             l[j as usize] = b;
             
             i = (i+1) % st;
@@ -168,12 +169,12 @@ impl<T> BlockCipher<T> for RC5<T> where T: PrimInt {
     // ---------------- Encryption ----------------
     
     fn encrypt(&self, plaintext: &[T;2]) -> [T;2] {
-        let mut a = RC5::modadd(plaintext[0], self.subkeys[0]);
-        let mut b = RC5::modadd(plaintext[1], self.subkeys[1]);
+        let mut a = Self::modadd(plaintext[0], self.subkeys[0]);
+        let mut b = Self::modadd(plaintext[1], self.subkeys[1]);
 
         for i in 1..ToPrimitive::to_usize(&(self.r + T::one())).unwrap() {
-            a = RC5::modadd(RC5::rol(self,a ^ b, b), self.subkeys[2*(i as usize)])  & self.mask;
-            b = RC5::modadd(RC5::rol(self,b ^ a, a), self.subkeys[2*(i as usize) + 1])  & self.mask;
+            a = Self::modadd(Self::rol(self,a ^ b, b), self.subkeys[2*(i as usize)])  & self.mask;
+            b = Self::modadd(Self::rol(self,b ^ a, a), self.subkeys[2*(i as usize) + 1])  & self.mask;
         }
 
         [a,b]
@@ -184,12 +185,12 @@ impl<T> BlockCipher<T> for RC5<T> where T: PrimInt {
     fn decrypt(&self, ciphertext: &[T;2]) -> [T;2] {
         let mut a = ciphertext[0];
         let mut b = ciphertext[1];
-
-        for i in (1..ToPrimitive::to_usize(&(self.r + T::one())).unwrap()).rev() {
-            b = RC5::ror(self, RC5::modsub(b, self.subkeys[2*(i as usize) + 1])  & self.mask, a) ^ a;
-            a = RC5::ror(self, RC5::modsub(a, self.subkeys[2*(i as usize)])  & self.mask, b) ^ b;
+        let R = ToPrimitive::to_usize(&(self.r + T::one())).unwrap();
+        for i in 1..R {
+            b = Self::ror(self, Self::modsub(b, self.subkeys[2*(R-i) + 1])  & self.mask, a) ^ a;
+            a = Self::ror(self, Self::modsub(a, self.subkeys[2*(R-i)])  & self.mask, b) ^ b;
         }
 
-        [RC5::modsub(a, self.subkeys[0]), RC5::modsub(b, self.subkeys[1])]
+        [Self::modsub(a, self.subkeys[0]), Self::modsub(b, self.subkeys[1])]
     }
 }

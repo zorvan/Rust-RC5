@@ -4,7 +4,7 @@
 -------------------------------------*/
     
 pub trait BlockCipher <T> {
-    fn setup(&mut self, key: &Vec<u8>);
+    fn setup(&mut self, key: &[u8]);
     fn encrypt(&self, plaintext: &[T;2]) -> [T;2];
     fn decrypt(&self, ciphertext: &[T;2]) -> [T;2];
 }
